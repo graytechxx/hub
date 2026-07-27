@@ -30,3 +30,8 @@ If you are developing a production application, we recommend enabling type-aware
 ```
 
 See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+
+## 🚀 Deployment
+
+Untuk panduan lengkap cara melakukan deploy aplikasi **LEPKOM Hub** ke berbagai jenis server (VPS/Nginx, Apache/cPanel, Docker, Vercel/Netlify), silakan baca [DEPLOYMENT.md](./DEPLOYMENT.md).
+
