@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Users, Plus, Trash2, CheckCircle2, FileText, UploadCloud, RefreshCw, FileSpreadsheet, AlertCircle, Link, Globe, Tag, Search } from 'lucide-react';
 import { parseExcelFile, parseExcelFromUrl } from '../../services/excelService';
-import { pushBulkUsersToAct, fetchSheetsUrlViaAct, fetchActUsers, deleteActUser, updateActUserRealtime } from '../../services/actApi';
+import { pushBulkUsersToAct, fetchSheetsUrlViaAct, fetchActUsers, deleteActUser, updateActUserRealtime, clearAllActUsers } from '../../services/actApi';
 
 const SAVED_SHEETS_LINK_KEY = 'lepkom_act_user_sheets_link';
 
@@ -12,10 +12,10 @@ export const ActUserBulkModule: React.FC = () => {
   const [username, setUsername] = useState('');
   const [name, setName] = useState('');
   const [role, setRole] = useState('asisten');
-  const [tag, setTag] = useState('TEKNIS');
+  const [tag, setTag] = useState('');
   const [password, setPassword] = useState('lepkomnewnormal');
 
-  const [defaultTag, setDefaultTag] = useState('TEKNIS');
+  const [defaultTag, setDefaultTag] = useState('');
   const [sheetsUrl, setSheetsUrl] = useState(() => {
     return localStorage.getItem(SAVED_SHEETS_LINK_KEY) || '';
   });
@@ -32,15 +32,17 @@ export const ActUserBulkModule: React.FC = () => {
     setIsFetchingDb(false);
 
     if (dbUsers && dbUsers.length > 0) {
-      const formatted = dbUsers.map((u) => ({
-        id: u.id,
-        username: u.username || u.email,
-        name: u.name,
-        email: u.email,
-        role: u.role || 'asisten',
-        tag: u.tag || '',
-        password: 'lepkomnewnormal',
-      }));
+      const formatted = dbUsers
+        .filter((u) => u.role !== 'superadmin' && u.email !== 'admin001' && u.username !== 'admin001')
+        .map((u) => ({
+          id: u.id,
+          username: u.username || u.email,
+          name: u.name,
+          email: u.email,
+          role: u.role || 'asisten',
+          tag: u.tag || '',
+          password: 'lepkomnewnormal',
+        }));
       setRecords(formatted);
       if (showNotification) {
         setToastMsg({
@@ -68,83 +70,89 @@ export const ActUserBulkModule: React.FC = () => {
     parsed.forEach((row) => {
       if (!row || typeof row !== 'object') return;
 
-      // 1. Ekstraksi ID Asisten
       let idAsisten = '';
-      for (const [k, v] of Object.entries(row)) {
-        const cleanK = k.toLowerCase().trim();
-        if (cleanK.includes('id asisten') || cleanK === 'id_asisten' || cleanK === 'idasisten') {
-          if (v !== undefined && v !== null && String(v).trim() !== '') {
-            idAsisten = String(v).trim();
-            break;
-          }
-        }
-      }
-
-      if (!idAsisten) {
-        for (const [k, v] of Object.entries(row)) {
-          const cleanK = k.toLowerCase().trim();
-          if (cleanK === 'npm' || cleanK === 'id' || cleanK === 'username') {
-            if (v !== undefined && v !== null && String(v).trim() !== '') {
-              idAsisten = String(v).trim();
-              break;
-            }
-          }
-        }
-      }
-
-      // 2. Ekstraksi Nama Lengkap (Pastikan TIDAK membaca kolom ID ASISTEN)
       let fullName = '';
-      for (const [k, v] of Object.entries(row)) {
-        const cleanK = k.toLowerCase().trim();
-        if (cleanK.includes('id asisten') || cleanK.includes('idasisten') || cleanK === 'id' || cleanK === 'npm') continue;
-        if (cleanK === 'nama' || cleanK === 'nama lengkap' || cleanK === 'nama asisten' || cleanK === 'name' || cleanK === 'fullname') {
-          if (v !== undefined && v !== null && String(v).trim() !== '') {
-            fullName = String(v).trim();
-            break;
-          }
-        }
-      }
-
-      if (!fullName) {
-        for (const [k, v] of Object.entries(row)) {
-          const cleanK = k.toLowerCase().trim();
-          if (cleanK.includes('id asisten') || cleanK.includes('idasisten')) continue;
-          if (cleanK.includes('nama') || cleanK.includes('name')) {
-            if (v !== undefined && v !== null && String(v).trim() !== '') {
-              fullName = String(v).trim();
-              break;
-            }
-          }
-        }
-      }
-
-      // Role & Tag
       let roleVal = 'asisten';
       let tagVal = defaultTag;
 
-      for (const [k, v] of Object.entries(row)) {
-        const cleanK = k.toLowerCase().trim();
+      const entries = Object.entries(row);
+
+      // 1. Strict extraction: ID Asisten MUST start with 'J' followed by digits (e.g. J0918003, J1221003)
+      for (const [_, v] of entries) {
+        if (v !== undefined && v !== null) {
+          const str = String(v).trim();
+          if (/^J\d+/i.test(str)) {
+            idAsisten = str;
+            break;
+          }
+        }
+      }
+
+      // If no valid ID starting with 'J' is found, skip this row ("selain itu gausah")
+      if (!idAsisten) {
+        return;
+      }
+
+      // 2. Extract Full Name
+      for (const [k, v] of entries) {
+        if (v === undefined || v === null) continue;
+        const valStr = String(v).trim();
+        if (valStr === idAsisten) continue;
+
+        const cleanK = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+        if (
+          cleanK.includes('namaasisten') ||
+          cleanK.includes('namalengkap') ||
+          cleanK.includes('studentname') ||
+          cleanK.includes('namamahasiswa') ||
+          cleanK.includes('nama') ||
+          cleanK.includes('name') ||
+          cleanK.includes('fullname') ||
+          cleanK === 'asisten'
+        ) {
+          fullName = valStr;
+          break;
+        }
+      }
+
+      // Fallback for Full Name if column header wasn't matched
+      if (!fullName) {
+        for (const [_, v] of entries) {
+          if (v === undefined || v === null) continue;
+          const valStr = String(v).trim();
+          if (valStr && valStr !== idAsisten && !/^\d+$/.test(valStr) && valStr.length > 2) {
+            fullName = valStr;
+            break;
+          }
+        }
+      }
+
+      // 3. Extract Role & Tag
+      for (const [k, v] of entries) {
+        if (v === undefined || v === null) continue;
+        const cleanK = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const valStr = String(v).trim();
+
         if (cleanK.includes('role') || cleanK.includes('peran')) {
-          if (String(v).toLowerCase().includes('staff')) roleVal = 'staff';
+          if (valStr.toLowerCase().includes('staff')) roleVal = 'staff';
+          else if (valStr.toLowerCase().includes('admin')) roleVal = 'superadmin';
         }
         if (cleanK.includes('tag') || cleanK.includes('divisi')) {
-          const str = String(v).toUpperCase();
+          const str = valStr.toUpperCase();
           if (str.includes('ADMIN')) tagVal = 'ADMIN';
           else if (str.includes('TEKNIS')) tagVal = 'TEKNIS';
         }
       }
 
-      if (idAsisten || fullName) {
-        const cleanId = idAsisten || fullName.toUpperCase().replace(/\s+/g, '');
-        mapped.push({
-          username: cleanId,
-          name: fullName || cleanId,
-          email: cleanId,
-          role: roleVal,
-          tag: tagVal,
-          password: 'lepkomnewnormal',
-        });
-      }
+      mapped.push({
+        username: idAsisten,
+        name: fullName || idAsisten,
+        email: idAsisten,
+        role: roleVal,
+        tag: tagVal,
+        password: 'lepkomnewnormal',
+      });
     });
 
     return mapped;
@@ -295,6 +303,23 @@ export const ActUserBulkModule: React.FC = () => {
     setToastMsg({ type: 'success', text: `⚡ Realtime Sync: User ${emailToDelete} berhasil dihapus dari database ACT.` });
   };
 
+  const handleClearUser = async () => {
+    const confirmClear = window.confirm('Apakah Anda yakin ingin MENGHAPUS SELURUH USER dari database Web ACT (kecuali Super Admin)?');
+    if (!confirmClear) return;
+
+    setIsSyncing(true);
+    setRecords([]);
+
+    const res = await clearAllActUsers();
+    setIsSyncing(false);
+
+    if (res.success) {
+      setToastMsg({ type: 'success', text: `⚡ Realtime Sync: ${res.message}` });
+    } else {
+      setToastMsg({ type: 'error', text: res.message });
+    }
+  };
+
   const handlePushToAct = async () => {
     if (records.length === 0) {
       setToastMsg({ type: 'error', text: 'Tidak ada data user untuk dikirim.' });
@@ -322,6 +347,7 @@ export const ActUserBulkModule: React.FC = () => {
   };
 
   const filteredRecords = records.filter((r) => {
+    if (r.role === 'superadmin' || r.username === 'admin001' || r.email === 'admin001') return false;
     const q = searchQuery.toLowerCase().trim();
     if (!q) return true;
     return (
@@ -354,6 +380,16 @@ export const ActUserBulkModule: React.FC = () => {
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isFetchingDb ? 'animate-spin' : ''}`} />
             <span>Reload DB</span>
+          </button>
+
+          <button
+            onClick={handleClearUser}
+            disabled={records.length === 0}
+            className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 border border-rose-200 rounded text-xs font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-50"
+            title="Bersihkan Tampilan Daftar User"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Clear User</span>
           </button>
 
           <button
@@ -531,9 +567,9 @@ export const ActUserBulkModule: React.FC = () => {
                   onChange={(e) => setTag(e.target.value)}
                   className="w-full bg-zinc-50 border border-zinc-200 rounded px-2 py-1.5 text-xs text-zinc-900 focus:outline-none font-mono"
                 >
+                  <option value="">Tanpa Tag</option>
                   <option value="TEKNIS">TEKNIS</option>
                   <option value="ADMIN">ADMIN</option>
-                  <option value="">Tanpa Tag</option>
                 </select>
               </div>
             </div>
@@ -622,9 +658,9 @@ export const ActUserBulkModule: React.FC = () => {
                           onChange={(e) => handleRowChange(idx, 'tag', e.target.value)}
                           className="bg-amber-50 border border-amber-300 rounded px-1.5 py-0.5 text-xs font-mono font-semibold text-amber-900 focus:outline-none cursor-pointer"
                         >
+                          <option value="">Tanpa Tag</option>
                           <option value="TEKNIS">TEKNIS</option>
                           <option value="ADMIN">ADMIN</option>
-                          <option value="">Tanpa Tag</option>
                         </select>
                       </td>
                       <td className="p-2 text-right">

@@ -239,11 +239,16 @@ export const parseExcelFile = <T = any>(file: File): Promise<T[]> => {
 export const parseExcelFromUrl = async <T = any>(url: string): Promise<T[]> => {
   let downloadUrl = url.trim();
 
-  // Convert Google Sheets edit link to CSV export link
+  // Convert Google Sheets edit/view/pubhtml link to CSV export link
   const googleSheetMatch = downloadUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   if (googleSheetMatch && googleSheetMatch[1]) {
     const sheetId = googleSheetMatch[1];
-    downloadUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
+    let gidParam = '';
+    const gidMatch = downloadUrl.match(/[?&#]gid=([0-9]+)/);
+    if (gidMatch && gidMatch[1]) {
+      gidParam = `&gid=${gidMatch[1]}`;
+    }
+    downloadUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${gidParam}`;
   }
 
   const response = await fetch(downloadUrl);

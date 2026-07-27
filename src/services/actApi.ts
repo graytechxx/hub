@@ -301,6 +301,29 @@ export const deleteActUser = async (email: string): Promise<boolean> => {
   }
 };
 
+export const clearAllActUsers = async (): Promise<{ success: boolean; message: string }> => {
+  const cfg = getActConfig();
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
+  };
+
+  try {
+    const res = await requestWithFallback((baseUrl) =>
+      axios.post(`${baseUrl}/api/hub/users/clear-all`, {}, { headers })
+    );
+    return {
+      success: true,
+      message: res.data?.message || 'Semua akun user berhasil dihapus dari database ACT!',
+    };
+  } catch (e: any) {
+    return {
+      success: false,
+      message: e.response?.data?.message || 'Gagal menghapus akun user dari database ACT.',
+    };
+  }
+};
+
 export const updateActUserRealtime = async (user: { email: string; role?: string; tag?: string; name?: string }): Promise<boolean> => {
   const cfg = getActConfig();
   const headers = {
