@@ -1,0 +1,15 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # Serve built assets from dist if requesting assets or root
+    RewriteCond %{REQUEST_URI} !^/dist/
+    RewriteCond %{DOCUMENT_ROOT}/dist%{REQUEST_URI} -f [OR]
+    RewriteCond %{DOCUMENT_ROOT}/dist%{REQUEST_URI} -d
+    RewriteRule ^(.*)$ dist/$1 [L]
+
+    # Fallback all routes to dist/index.html for SPA routing
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ dist/index.html [L]
+</IfModule>
